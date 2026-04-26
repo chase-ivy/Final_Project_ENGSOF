@@ -3,6 +3,15 @@ require_once 'config.php';
 require_once 'oop.php';
 $oop = new oopPHP();
 
+// HANDLE SUBMIT
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['rating'])) {
+    $res = $oop->submit_rating($id, $_POST['rating'], $_POST['feedback']);
+}
+
+// FETCH RATINGS
+$ratings = $oop->get_ratings($id);
+$avg     = $oop->get_avg_rating($id);
+
 $id   = isset($_GET['id']) ? (int)$_GET['id'] : 0;
 $room = $oop->get_room_by_id($id);
 
@@ -168,6 +177,32 @@ footer { text-align:center; padding:24px; color:var(--muted); font-size:12px; bo
                 </div>
 
                 <?php if (!empty($room['description'])): ?>
+                    <div class="divider"></div>
+
+                <!-- ⭐ RATINGS SECTION -->
+                <div class="desc-block">
+                <h4>Ratings & Feedback</h4>
+
+                <p style="margin-bottom:10px;">
+                    <strong>
+                    <?= $avg['avg_rating'] ? round($avg['avg_rating'],1) : '0.0' ?> ⭐
+                    </strong>
+                (<?= $avg['total'] ?> reviews)
+                </p>
+
+                <?php if (!empty($ratings)): ?>
+                    <?php foreach ($ratings as $r): ?>
+                        <div style="margin-bottom:12px; padding-bottom:10px; border-bottom:1px solid var(--border);">
+                            <strong><?= htmlspecialchars($r['name']) ?></strong><br>
+                            <span><?= str_repeat("⭐", $r['rating']) ?></span>
+                            <p style="font-size:13px; margin-top:4px;"><?= htmlspecialchars($r['feedback']) ?></p>
+                            <small style="color:var(--muted)"><?= $r['created_at'] ?></small>
+                        </div>
+                    <?php endforeach; ?>
+                    <?php else: ?>
+                        <p style="color:var(--muted); font-size:13px;">No reviews yet.</p>
+                    <?php endif; ?>
+                </div>
                 <div class="desc-block">
                     <h4>About this room</h4>
                     <p><?= nl2br(htmlspecialchars($room['description'])) ?></p>

@@ -8,7 +8,7 @@ define('dbhost', 'localhost');
 define('dbuser', 'root');
 define('dbpass', '');
 define('dbname', 'rsync_db');
-define('dbport', '3307'); // change if needed
+define('dbport', '3306'); // change if needed
 
 try {
     $connect = new PDO(

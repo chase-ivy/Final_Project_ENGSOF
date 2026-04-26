@@ -301,5 +301,111 @@ class oopPHP {
 
         return ["status" => "removed"];
     }
+
+    //Ratings and Feedback
+    public function submit_rating($room_id, $rating, $feedback) {
+        if (!isset($_SESSION['user_id'])) {
+            return ["status" => "error", "message" => "Login required"];
+        }
+
+        if ($rating < 1 || $rating > 5) {
+            return ["status" => "error", "message" => "Invalid rating value"];
+        }
+
+        $stmt = $this->conn->prepare("
+            INSERT INTO ratings (user_id, room_id, rating, feedback)
+            VALUES (:user, :room, :rating, :feedback)
+            ON DUPLICATE KEY UPDATE
+                rating = :rating,
+                feedback = :feedback,
+                created_at = CURRENT_TIMESTAMP
+        ");
+
+        $stmt->execute([
+            ":user" => $_SESSION['user_id'],
+            ":room" => $room_id,
+            ":rating" => $rating,
+            ":feedback" => $feedback
+        ]);
+
+        $check = $this->conn->prepare("SELECT COUNT(*) FROM tenants WHERE user_id = :user AND room_id = :room");
+        $check->execute([":user" => $_SESSION['user_id'], ":room" => $room_id]);
+
+        if ($check->fetchColumn() == 0) {
+            return ["status" => "error", "message" => "You must stay in this room to rate it"];
+        }
+
+        return ["status" => "success"];
+    }
+
+    //Ratings per room
+    public function get_ratings($room_id) {
+        $stmt = $this->conn->prepare("
+            SELECT r.*, u.name
+            FROM ratings r
+            JOIN users u ON r.user_id = u.user_id
+            WHERE r.room_id = :id
+            ORDER BY r.created_at DESC
+        ");
+        $stmt->execute([":id" => $room_id]);
+        return $stmt->fetchAll(PDO::FETCH_ASSOC);
+    }
+
+    //get average rating
+    public function get_avg_rating($room_id) {
+        $stmt = $this->conn->prepare("
+            SELECT AVG(rating) as avg_rating, COUNT(*) as total
+            FROM ratings WHERE room_id = :id
+        ");
+        $stmt->execute([":id" => $room_id]);
+        return $stmt->fetch(PDO::FETCH_ASSOC);
+    }
+
+    /* ── REPORT SUBMISSION ── */
+    public function submit_report($room_id, $subject, $message) {
+        if (!isset($_SESSION['user_id'])) {
+            return ["status" => "error", "message" => "Not logged in"];
+        }
+
+        $stmt = $this->conn->prepare("
+            INSERT INTO reports (room_id, user_id, subject, message)
+            VALUES (:r, :u, :s, :m)
+        ");
+
+        $stmt->execute([
+            ":r" => $room_id,
+            ":u" => $_SESSION['user_id'],
+            ":s" => $subject,
+            ":m" => $message
+        ]);
+
+        return ["status" => "success", "message" => "Report submitted"];
+    }
+
+    /* ── GET REPORTS (MODERATOR) ── */
+    public function get_reports() {
+        $stmt = $this->conn->query("
+            SELECT r.*, u.name, rm.room_name
+            FROM reports r
+            JOIN users u ON r.user_id = u.user_id
+            JOIN rooms rm ON r.room_id = rm.room_id
+            ORDER BY r.created_at DESC
+        ");
+
+        return $stmt->fetchAll(PDO::FETCH_ASSOC);
+    }
+
+    /* ── UPDATE REPORT STATUS ── */
+    public function update_report_status($report_id, $status) {
+        $stmt = $this->conn->prepare("
+            UPDATE reports SET status=:s WHERE report_id=:id
+        ");
+
+        return $stmt->execute([
+            ":s" => $status,
+            ":id" => $report_id
+        ]);
+    }
+
 }
 ?>
