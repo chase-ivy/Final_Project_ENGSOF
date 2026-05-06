@@ -11,6 +11,12 @@ class oopPHP {
         if (session_status() === PHP_SESSION_NONE) session_start();
     }
 
+    private function columnExists($table, $column) {
+        $stmt = $this->conn->prepare("SHOW COLUMNS FROM `$table` LIKE :column");
+        $stmt->execute([":column" => $column]);
+        return (bool)$stmt->fetch(PDO::FETCH_ASSOC);
+    }
+
     /* ── LOGIN ── */
     public function login($email, $password) {
         $stmt = $this->conn->prepare("SELECT * FROM users WHERE email = :email");
@@ -300,6 +306,99 @@ class oopPHP {
                    ->execute([":s" => $remaining > 0 ? 'Occupied' : 'Available', ":id" => $room_id]);
 
         return ["status" => "removed"];
+    }
+
+    public function get_tenant_details($tenant_id) {
+        $stmt = $this->conn->prepare("\n            SELECT t.tenant_id, t.user_id, t.room_id, t.age, t.start_date, t.end_date, t.status, u.name, u.email\n            FROM tenants t\n            JOIN users u ON t.user_id = u.user_id\n            WHERE t.tenant_id = :id\n            LIMIT 1\n        ");
+        $stmt->execute([":id" => $tenant_id]);
+        return $stmt->fetch(PDO::FETCH_ASSOC);
+    }
+
+    public function update_tenant($tenant_id, $name, $age, $email, $room_id, $start_date, $end_date, $status) {
+        $fetch = $this->conn->prepare("SELECT user_id FROM tenants WHERE tenant_id = :id");
+        $fetch->execute([":id" => $tenant_id]);
+        $tenant = $fetch->fetch(PDO::FETCH_ASSOC);
+        if (!$tenant) return ["status" => "error", "message" => "Tenant record not found"];
+
+        $user_id = $tenant['user_id'];
+        $updateUser = $this->conn->prepare("UPDATE users SET name = :name, email = :email WHERE user_id = :uid");
+        $updateUser->execute([
+            ":name" => $name,
+            ":email" => $email,
+            ":uid" => $user_id
+        ]);
+
+        $updateTenant = $this->conn->prepare("\n            UPDATE tenants\n            SET age = :age, room_id = :room_id, start_date = :start_date, end_date = :end_date, status = :status\n            WHERE tenant_id = :id\n        ");
+        $updateTenant->execute([
+            ":age" => (int)$age,
+            ":room_id" => $room_id,
+            ":start_date" => $start_date,
+            ":end_date" => $end_date,
+            ":status" => $status,
+            ":id" => $tenant_id
+        ]);
+
+        return ["status" => "success"];
+    }
+
+    public function get_total_payments() {
+        $stmt = $this->conn->query("SELECT COALESCE(SUM(amount), 0) AS total FROM payments");
+        return (float)$stmt->fetch(PDO::FETCH_ASSOC)['total'];
+    }
+
+    public function get_monthly_earnings() {
+        $stmt = $this->conn->prepare("SELECT COALESCE(SUM(amount), 0) AS total FROM payments WHERE MONTH(`date`) = MONTH(CURDATE()) AND YEAR(`date`) = YEAR(CURDATE())");
+        $stmt->execute();
+        return (float)$stmt->fetch(PDO::FETCH_ASSOC)['total'];
+    }
+
+    public function get_maintenance_requests() {
+        $dateColumn = $this->columnExists('maintenance_requests', 'submitted_at') ? 'submitted_at' : (
+                      $this->columnExists('maintenance_requests', 'request_date') ? 'request_date' : 'created_at');
+        $stmt = $this->conn->query("SELECT request_id, description, status, $dateColumn AS submitted_at FROM maintenance_requests ORDER BY $dateColumn DESC LIMIT 8");
+        return $stmt->fetchAll(PDO::FETCH_ASSOC);
+    }
+
+    public function get_maintenance_status() {
+        $stmt = $this->conn->query("SELECT status, COUNT(*) AS count FROM maintenance_requests GROUP BY status");
+        return $stmt->fetchAll(PDO::FETCH_ASSOC);
+    }
+
+    public function get_pending_users() {
+        if ($this->columnExists('users', 'verified')) {
+            $stmt = $this->conn->query("SELECT user_id, name, email, role FROM users WHERE role != 'landlord' AND (verified = 0 OR verified IS NULL) ORDER BY created_at DESC");
+        } elseif ($this->columnExists('users', 'status')) {
+            $stmt = $this->conn->query("SELECT user_id, name, email, role FROM users WHERE role != 'landlord' AND status = 'Pending' ORDER BY created_at DESC");
+        } else {
+            $stmt = $this->conn->query("SELECT user_id, name, email, role FROM users WHERE role != 'landlord' ORDER BY created_at DESC");
+        }
+        return $stmt->fetchAll(PDO::FETCH_ASSOC);
+    }
+
+    public function get_payments() {
+        $stmt = $this->conn->query("SELECT payment_id, amount, `date`, status FROM payments ORDER BY `date` DESC LIMIT 12");
+        return $stmt->fetchAll(PDO::FETCH_ASSOC);
+    }
+
+    public function get_transactions() {
+        $stmt = $this->conn->query("SELECT transaction_id, type, amount, `date`, status FROM transactions ORDER BY `date` DESC LIMIT 12");
+        return $stmt->fetchAll(PDO::FETCH_ASSOC);
+    }
+
+    public function verify_user($user_id) {
+        if ($this->columnExists('users', 'verified')) {
+            $stmt = $this->conn->prepare("UPDATE users SET verified = 1 WHERE user_id = :id");
+        } elseif ($this->columnExists('users', 'status')) {
+            $stmt = $this->conn->prepare("UPDATE users SET status = 'Verified' WHERE user_id = :id");
+        } else {
+            return false;
+        }
+        return $stmt->execute([":id" => $user_id]);
+    }
+
+    public function verify_payment($payment_id) {
+        $stmt = $this->conn->prepare("UPDATE payments SET status = 'Verified' WHERE payment_id = :id");
+        return $stmt->execute([":id" => $payment_id]);
     }
 }
 ?>
