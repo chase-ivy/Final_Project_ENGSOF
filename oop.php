@@ -400,5 +400,100 @@ class oopPHP {
         $stmt = $this->conn->prepare("UPDATE payments SET status = 'Verified' WHERE payment_id = :id");
         return $stmt->execute([":id" => $payment_id]);
     }
+
+    /* ── ROOM APPLICATIONS ── */
+    public function apply_for_room($user_id, $room_id) {
+        if (!isset($_SESSION['user_id'])) return ["status" => "error", "message" => "Not authenticated"];
+
+        // Check if room exists
+        $check = $this->conn->prepare("SELECT room_id FROM rooms WHERE room_id=:id");
+        $check->execute([":id" => $room_id]);
+        if (!$check->fetch(PDO::FETCH_ASSOC)) {
+            return ["status" => "error", "message" => "Room not found"];
+        }
+
+        // Check if already applied
+        $existing = $this->conn->prepare("SELECT application_id FROM applications WHERE user_id=:u AND room_id=:r AND status='Pending'");
+        $existing->execute([":u" => $user_id, ":r" => $room_id]);
+        if ($existing->fetch(PDO::FETCH_ASSOC)) {
+            return ["status" => "error", "message" => "You already applied for this room"];
+        }
+
+        // Create application
+        $stmt = $this->conn->prepare("
+            INSERT INTO applications (user_id, room_id, status, applied_at)
+            VALUES (:u, :r, 'Pending', NOW())
+        ");
+        $ok = $stmt->execute([":u" => $user_id, ":r" => $room_id]);
+        return $ok ? ["status" => "success", "message" => "Application submitted successfully"] : ["status" => "error", "message" => "Failed to submit application"];
+    }
+
+    public function get_tenant_applications($user_id) {
+        $stmt = $this->conn->prepare("
+            SELECT a.*, r.room_name, r.price, r.description, 
+                   (SELECT filename FROM room_images WHERE room_id=r.room_id ORDER BY sort_order ASC LIMIT 1) AS cover_image
+            FROM applications a
+            JOIN rooms r ON a.room_id = r.room_id
+            WHERE a.user_id = :uid
+            ORDER BY a.applied_at DESC
+        ");
+        $stmt->execute([":uid" => $user_id]);
+        return $stmt->fetchAll(PDO::FETCH_ASSOC);
+    }
+
+    public function get_room_applications($room_id) {
+        $stmt = $this->conn->prepare("
+            SELECT a.application_id, a.user_id, a.status, a.applied_at, u.name, u.email
+            FROM applications a
+            JOIN users u ON a.user_id = u.user_id
+            WHERE a.room_id = :rid
+            ORDER BY a.applied_at DESC
+        ");
+        $stmt->execute([":rid" => $room_id]);
+        return $stmt->fetchAll(PDO::FETCH_ASSOC);
+    }
+
+    public function verify_application($application_id, $user_id, $room_id) {
+        if (!isset($_SESSION['user_id'])) return ["status" => "error", "message" => "Not authenticated"];
+
+        // Check if this landlord owns the room
+        $check = $this->conn->prepare("SELECT owner_id FROM rooms WHERE room_id=:id");
+        $check->execute([":id" => $room_id]);
+        $room = $check->fetch(PDO::FETCH_ASSOC);
+        if (!$room || (int)$room['owner_id'] !== (int)$_SESSION['user_id']) {
+            return ["status" => "error", "message" => "Unauthorized"];
+        }
+
+        // Update application status to Verified
+        $stmt = $this->conn->prepare("UPDATE applications SET status='Verified' WHERE application_id=:id");
+        return $stmt->execute([":id" => $application_id]) ? ["status" => "success"] : ["status" => "error"];
+    }
+
+    public function reject_application($application_id, $room_id) {
+        if (!isset($_SESSION['user_id'])) return ["status" => "error", "message" => "Not authenticated"];
+
+        // Check if this landlord owns the room
+        $check = $this->conn->prepare("SELECT owner_id FROM rooms WHERE room_id=:id");
+        $check->execute([":id" => $room_id]);
+        $room = $check->fetch(PDO::FETCH_ASSOC);
+        if (!$room || (int)$room['owner_id'] !== (int)$_SESSION['user_id']) {
+            return ["status" => "error", "message" => "Unauthorized"];
+        }
+
+        // Update application status to Rejected
+        $stmt = $this->conn->prepare("UPDATE applications SET status='Rejected' WHERE application_id=:id");
+        return $stmt->execute([":id" => $application_id]) ? ["status" => "success"] : ["status" => "error"];
+    }
+
+    public function get_application_count_by_status($room_id, $status = null) {
+        if ($status) {
+            $stmt = $this->conn->prepare("SELECT COUNT(*) FROM applications WHERE room_id=:rid AND status=:status");
+            $stmt->execute([":rid" => $room_id, ":status" => $status]);
+        } else {
+            $stmt = $this->conn->prepare("SELECT COUNT(*) FROM applications WHERE room_id=:rid");
+            $stmt->execute([":rid" => $room_id]);
+        }
+        return (int)$stmt->fetchColumn();
+    }
 }
 ?>

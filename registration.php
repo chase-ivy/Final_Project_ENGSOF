@@ -2,12 +2,16 @@
 session_start();
 require_once "config.php";
 
+$selectedPlan = $_POST['plan'] ?? $_GET['plan'] ?? '';
+$selectedRole = $_POST['role'] ?? ($selectedPlan ? 'landlord' : '');
+
 if (isset($_POST['register'])) {
     $name     = $_POST['name'];
     $age      = $_POST['age'];
     $email    = $_POST['email'];
     $password = password_hash($_POST['password'], PASSWORD_DEFAULT);
     $role     = $_POST['role'];
+    $plan     = $_POST['plan'] ?? '';
 
     try {
         $check = $connect->prepare("SELECT email FROM users WHERE email=:e");
@@ -64,6 +68,7 @@ body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--ink);min-
 .field input:focus,.field select:focus{border-color:var(--amber);background:#fff;box-shadow:0 0 0 3px rgba(232,160,32,.13);}
 .field i{position:absolute;right:11px;top:50%;transform:translateY(-50%);font-size:17px;color:var(--ink3);cursor:pointer;pointer-events:none;}
 .field i.clickable{pointer-events:auto;}
+.plan-chip{width:100%;padding:11px 13px;border:1.5px solid var(--border);border-radius:var(--r);background:#fff;color:var(--ink2);font-size:14px;}
 
 .btn-main{width:100%;padding:12px;border:none;border-radius:var(--r);background:var(--ink);color:#fff;font-family:'DM Sans',sans-serif;font-size:14px;font-weight:600;cursor:pointer;transition:.18s;margin-top:4px;}
 .btn-main:hover{background:#1e1e2e;}
@@ -122,23 +127,39 @@ body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--ink);min-
     <div class="field">
         <label>Password</label>
         <div class="inp-wrap">
-            <input type="password" id="pw" name="Your password" placeholder="••••••••" required>
+            <input type="password" id="pw" name="password" placeholder="••••••••" required>
             <i class="bx bx-show clickable" onclick="togglePw()"></i>
         </div>
     </div>
 
+    <?php if ($selectedPlan): ?>
+    <div class="field">
+        <label>Selected plan</label>
+        <div class="inp-wrap plan-chip"><?= htmlspecialchars($selectedPlan) ?></div>
+        <input type="hidden" name="plan" value="<?= htmlspecialchars($selectedPlan) ?>">
+    </div>
+    <?php endif; ?>
+
+    <?php if (!$selectedPlan): ?>
     <div class="field">
         <label>Role</label>
         <div class="inp-wrap">
             <select name="role" required>
-                <option value="" disabled <?= empty($_POST['role'])?'selected':'' ?>>Select role</option>
-                <option value="tenant"    <?= ($_POST['role']??'')==='tenant'   ?'selected':'' ?>>Tenant</option>
-                <option value="landlord"  <?= ($_POST['role']??'')==='landlord' ?'selected':'' ?>>Landlord</option>
-                <option value="sublessor" <?= ($_POST['role']??'')==='sublessor'?'selected':'' ?>>Sublessor</option>
+                <option value="" disabled <?= empty($selectedRole)?'selected':'' ?>>Select role</option>
+                <option value="tenant"    <?= $selectedRole==='tenant'   ?'selected':'' ?>>Tenant</option>
+                <option value="landlord"  <?= $selectedRole==='landlord' ?'selected':'' ?>>Landlord</option>
+                <option value="sublessor" <?= $selectedRole==='sublessor'?'selected':'' ?>>Sublessor</option>
             </select>
             <i class="bx bx-chevron-down"></i>
         </div>
     </div>
+    <?php else: ?>
+    <div class="field">
+        <label>Registration type</label>
+        <div class="inp-wrap plan-chip">Landlord</div>
+        <input type="hidden" name="role" value="landlord">
+    </div>
+    <?php endif; ?>
 
     <button class="btn-main" name="register">Create Account</button>
 

@@ -3,6 +3,22 @@ require_once 'config.php';
 require_once 'oop.php';
 $oop = new oopPHP();
 
+// Handle application submission via POST
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['apply_for_room'])) {
+    header('Content-Type: application/json');
+    if (!isset($_SESSION['user_id'])) {
+        echo json_encode(["status" => "error", "message" => "You must be logged in"]);
+        exit();
+    }
+    if ($_SESSION['role'] !== 'tenant') {
+        echo json_encode(["status" => "error", "message" => "Only tenants can apply"]);
+        exit();
+    }
+    $result = $oop->apply_for_room($_SESSION['user_id'], $_POST['room_id']);
+    echo json_encode($result);
+    exit();
+}
+
 $id   = isset($_GET['id']) ? (int)$_GET['id'] : 0;
 $room = $oop->get_room_by_id($id);
 
@@ -174,14 +190,14 @@ footer { text-align:center; padding:24px; color:var(--muted); font-size:12px; bo
                 </div>
                 <?php endif; ?>
 
-                <?php if (isset($_SESSION['role']) && $_SESSION['role'] === 'tenant'): ?>
+                <?php if (isset($_SESSION['user_id']) && $_SESSION['role'] === 'tenant'): ?>
                     <?php if (!$full): ?>
-                        <a href="login.php" class="cta-btn">Request this Room</a>
+                        <button class="cta-btn" onclick="applyForRoom(<?= $id ?>, '<?= addslashes(htmlspecialchars($room['room_name'])) ?>')">Apply Now</button>
                     <?php else: ?>
                         <button class="cta-btn" style="background:#9ca3af;cursor:not-allowed" disabled>Room Full</button>
                     <?php endif; ?>
                 <?php else: ?>
-                    <a href="login.php" class="cta-btn">Login to Request</a>
+                    <a href="login.php" class="cta-btn">Login to Apply</a>
                 <?php endif; ?>
             </div>
         </div>
@@ -231,6 +247,27 @@ document.addEventListener('keydown', e => {
     if (e.key === 'ArrowLeft')  lbNav(-1);
     if (e.key === 'ArrowRight') lbNav(1);
 });
+
+// Application submission
+function applyForRoom(roomId, roomName){
+  if(confirm('Apply for ' + roomName + '?')){
+    fetch('', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+      body: 'apply_for_room=1&room_id=' + roomId
+    })
+    .then(r => r.json())
+    .then(data => {
+      if(data.status === 'success'){
+        alert('Application submitted successfully! You will be notified once the landlord reviews your application.');
+        window.location.href = 'tenant_dashboard.php';
+      } else {
+        alert('Error: ' + data.message);
+      }
+    })
+    .catch(err => alert('An error occurred. Please try again.'));
+  }
+}
 </script>
 </body>
 </html>

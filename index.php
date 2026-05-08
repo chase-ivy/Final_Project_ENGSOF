@@ -3,6 +3,22 @@ include 'config.php';
 include 'oop.php';
 $oop = new oopPHP();
 
+// POST: Handle room applications
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['apply_for_room'])) {
+    header('Content-Type: application/json');
+    if (!isset($_SESSION['user_id'])) {
+        echo json_encode(["status" => "error", "message" => "You must be logged in"]);
+        exit();
+    }
+    if ($_SESSION['role'] !== 'tenant') {
+        echo json_encode(["status" => "error", "message" => "Only tenants can apply"]);
+        exit();
+    }
+    $result = $oop->apply_for_room($_SESSION['user_id'], $_POST['room_id']);
+    echo json_encode($result);
+    exit();
+}
+
 //Ajax
 if (isset($_GET['search'])) {
     header('Content-Type: application/json');
@@ -39,55 +55,8 @@ $featured  = array_slice(array_values(array_merge(
 <title>RSYNC — Find Your Room</title>
 <link href="https://fonts.googleapis.com/css2?family=Syne:wght@700;800&family=DM+Sans:wght@400;500&display=swap" rel="stylesheet">
 <link href="https://unpkg.com/boxicons@latest/css/boxicons.min.css" rel="stylesheet">
-
-</head>
-<body>
-
-<nav>
-    <a class="nav-logo" href="index.php">RS<span>Y</span>NC</a>
-    <div class="nav-links"><?php
-require_once 'config.php';
-require_once 'oop.php';
-$oop = new oopPHP();
-
-
-if (isset($_GET['search'])) {
-    header('Content-Type: application/json');
-    $kw = '%' . trim($_GET['search']) . '%';
-    $stmt = $connect->prepare("
-        SELECT r.room_id, r.room_name, r.price, r.status,
-               COUNT(DISTINCT t.tenant_id) AS current_occupants,
-               r.max_occupants,
-               (SELECT filename FROM room_images ri WHERE ri.room_id = r.room_id ORDER BY ri.sort_order ASC LIMIT 1) AS cover_image
-        FROM rooms r
-        LEFT JOIN tenants t ON t.room_id = r.room_id AND t.status = 'Active'
-        WHERE r.room_name LIKE :kw OR r.description LIKE :kw OR r.price LIKE :kw
-        GROUP BY r.room_id ORDER BY r.status ASC LIMIT 10
-    ");
-    $stmt->execute([':kw' => $kw]);
-    echo json_encode($stmt->fetchAll(PDO::FETCH_ASSOC));
-    exit();
-}
-
-$all       = $oop->get_rooms();
-$total     = count($all);
-$available = count(array_filter($all, fn($r) => $r['status'] === 'Available'));
-$occupied  = $total - $available;
-$featured  = array_slice(array_values(array_merge(
-    array_filter($all, fn($r) => $r['status'] === 'Available'),
-    array_filter($all, fn($r) => $r['status'] !== 'Available')
-)), 0, 6);
-?>
-<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>RSYNC — Find Your Room</title>
-<link href="https://fonts.googleapis.com/css2?family=Syne:wght@700;800&family=DM+Sans:wght@400;500&display=swap" rel="stylesheet">
-<link href="https://unpkg.com/boxicons@latest/css/boxicons.min.css" rel="stylesheet">
 <style>
-:root{--ink:#0a0a0f;--ink2:#3d3d4a;--ink3:#8e8ea0;--bg:#f4f3ef;--amber:#e8a020;--green:#059669;--red:#dc2626;--border:rgba(0,0,0,.08);--r:16px;--sh:0 2px 12px rgba(0,0,0,.06);}
+:root{--ink:#0a0a0f;--ink2:#3d3d4a;--ink3:#8e8ea0;--bg:#f4f3ef;--surface:#fff;--surface-soft:#faf9f6;--amber:#e8a020;--green:#059669;--red:#dc2626;--border:rgba(0,0,0,.08);--border-strong:rgba(0,0,0,.12);--r:16px;--sh:0 2px 12px rgba(0,0,0,.06);--shadow-md:0 10px 24px rgba(0,0,0,.06);--transition-base:180ms ease;}
 *,*::before,*::after{margin:0;padding:0;box-sizing:border-box;}
 html{scroll-behavior:smooth;}
 body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--ink);overflow-x:hidden;}
@@ -167,8 +136,8 @@ nav{position:fixed;inset:0 0 auto;z-index:200;display:flex;justify-content:space
 .view-btn{display:inline-flex;align-items:center;gap:5px;padding:8px 14px;background:var(--ink);color:#fff;border-radius:9px;font-size:12px;font-weight:500;transition:.18s;}
 .view-btn:hover{background:var(--amber);}
 
-.why{background:var(--ink);padding:72px 0;}
-.why-inner{width:90%;max-width:1200px;margin:0 auto;}
+.why{background:var(--ink);padding:72px 0;position:relative;left:50%;right:50%;margin-left:-50vw;margin-right:-50vw;width:100vw;}
+.why-inner{max-width:1200px;margin:0 auto;padding:0 24px;box-sizing:border-box;}
 .why h2{font-family:'Syne',sans-serif;font-size:28px;font-weight:800;color:#fff;text-align:center;margin-bottom:36px;}
 .why-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:16px;}
 .why-card{background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);border-radius:var(--r);padding:24px;transition:.2s;}
@@ -178,7 +147,7 @@ nav{position:fixed;inset:0 0 auto;z-index:200;display:flex;justify-content:space
 .why-card p{font-size:13px;color:rgba(255,255,255,.45);line-height:1.6;}
 
 /* FOOTER */
-footer{background:var(--ink);border-top:1px solid rgba(255,255,255,.06);padding:24px 60px;display:flex;justify-content:space-between;align-items:center;}
+footer{background:var(--ink);border-top:1px solid rgba(255,255,255,.06);padding:24px 60px;display:flex;justify-content:space-between;align-items:center;position:relative;left:50%;right:50%;margin-left:-50vw;margin-right:-50vw;width:100vw;box-sizing:border-box;}
 .foot-logo{font-family:'Syne',sans-serif;font-size:15px;font-weight:800;color:#fff;letter-spacing:2px;}
 .foot-logo span{color:var(--amber);}
 footer p{font-size:12px;color:rgba(255,255,255,.3);}
@@ -213,39 +182,40 @@ footer p{font-size:12px;color:rgba(255,255,255,.3);}
 @media(max-width:768px){nav{padding:13px 20px;}.hero h1{font-size:38px;letter-spacing:-1px;}.section{padding:50px 0;}.why-inner{width:96%;}.pricing-card{padding:28px 20px;}.pricing-price{flex-wrap:wrap;}.price-period{margin-left:0;width:100%;margin-top:8px;}footer{flex-direction:column;gap:6px;padding:20px;}}
 
 /* ═══ PLANS ═══ */
-.billing-toggle{display:inline-flex;gap:4px;background:rgba(0,0,0,.05);border-radius:12px;padding:4px;margin-bottom:32px;}
-.tgl{font-size:13px;font-weight:500;padding:7px 18px;border-radius:9px;border:none;background:transparent;color:var(--ink3);cursor:pointer;transition:.18s;}
-.tgl.active{background:#fff;color:var(--ink);box-shadow:0 1px 4px rgba(0,0,0,.08);}
-.save-tag{font-size:10px;background:#fef3c7;color:#92400e;padding:2px 7px;border-radius:999px;margin-left:4px;}
-.plans-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:16px;align-items:start;}
-.plan-card{background:#fff;border:1px solid var(--border);border-radius:var(--r);padding:24px 20px 20px;position:relative;transition:.22s;}
-.plan-card:hover{transform:translateY(-5px);box-shadow:0 12px 32px rgba(0,0,0,.08);}
-.plan-card.featured-plan{border:2px solid var(--amber);}
-.pop-badge{position:absolute;top:-12px;left:50%;transform:translateX(-50%);background:var(--amber);color:#fff;font-size:10px;font-weight:600;padding:3px 14px;border-radius:999px;white-space:nowrap;letter-spacing:.4px;}
-.plan-icon-wrap{width:38px;height:38px;border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:20px;margin-bottom:14px;}
-.plan-icon-wrap.starter{background:#f0fdf4;color:#16a34a;}
-.plan-icon-wrap.pro{background:#fffbeb;color:#d97706;}
-.plan-icon-wrap.ent{background:#eff6ff;color:#2563eb;}
-.plan-name{font-family:'Syne',sans-serif;font-size:17px;font-weight:700;margin-bottom:4px;}
-.plan-desc{font-size:12px;color:var(--ink3);margin-bottom:16px;line-height:1.5;}
-.plan-price-row{display:flex;align-items:baseline;gap:2px;}
-.plan-curr{font-size:15px;color:var(--ink3);margin-top:4px;}
-.plan-amt{font-family:'Syne',sans-serif;font-size:36px;font-weight:800;color:var(--ink);}
-.plan-per{font-size:12px;color:var(--ink3);margin-left:2px;}
-.plan-orig{font-size:11px;color:var(--ink3);text-decoration:line-through;min-height:16px;margin-top:2px;margin-bottom:14px;}
-.plan-divider{border:none;border-top:1px solid var(--border);margin:14px 0;}
-.plan-feats{list-style:none;display:flex;flex-direction:column;gap:9px;margin-bottom:20px;}
-.pf{display:flex;align-items:flex-start;gap:8px;font-size:13px;color:var(--ink2);}
-.pf i{font-size:16px;flex-shrink:0;margin-top:1px;color:var(--green);}
+.billing-toggle{display:inline-flex;gap:4px;background:rgba(0,0,0,.06);border-radius:9999px;padding:4px;margin-bottom:32px;box-shadow:inset 0 0 0 1px rgba(0,0,0,.04);}
+.tgl{font-size:13px;font-weight:600;padding:10px 18px;border-radius:9999px;border:none;background:transparent;color:var(--ink2);cursor:pointer;transition:var(--transition-base);}
+.tgl.active{background:#fff;color:var(--ink);box-shadow:0 4px 14px rgba(0,0,0,.08);}
+.save-tag{font-size:10px;background:#fef3c7;color:#92400e;padding:2px 7px;border-radius:999px;margin-left:6px;}
+.plans-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:18px;align-items:stretch;}
+.plan-card{background:var(--surface);border:1px solid var(--border-strong);border-radius:22px;padding:28px;position:relative;display:flex;flex-direction:column;transition:transform var(--transition-base),box-shadow var(--transition-base),border-color var(--transition-base);box-shadow:var(--shadow-md);}
+.plan-card:hover{transform:translateY(-4px);box-shadow:0 18px 36px rgba(0,0,0,.08);border-color:rgba(0,0,0,.16);}
+.plan-card.featured-plan{border-color:rgba(232,160,32,.35);background:linear-gradient(180deg,rgba(255,245,224,.95) 0%,var(--surface) 100%);}
+.plan-card-top{display:flex;align-items:center;gap:14px;margin-bottom:18px;}
+.plan-icon-wrap{width:44px;height:44px;border-radius:16px;display:flex;align-items:center;justify-content:center;font-size:20px;}
+.plan-icon-wrap.starter{background:#ecfdf5;color:#047857;}
+.plan-icon-wrap.pro{background:#fffbeb;color:#b45309;}
+.plan-icon-wrap.ent{background:#eff6ff;color:#1d4ed8;}
+.plan-name{font-family:'Syne',sans-serif;font-size:18px;font-weight:800;margin-bottom:4px;}
+.plan-desc{font-size:13px;color:var(--ink3);margin-bottom:20px;line-height:1.6;}
+.plan-price-row{display:flex;align-items:flex-end;gap:4px;margin-bottom:8px;}
+.plan-curr{font-size:16px;color:var(--ink3);}
+.plan-amt{font-family:'Syne',sans-serif;font-size:40px;font-weight:800;color:var(--ink);}
+.plan-per{font-size:12px;color:var(--ink3);margin-bottom:2px;}
+.plan-orig{font-size:11px;color:var(--ink3);min-height:18px;margin-bottom:18px;}
+.plan-divider{border:none;border-top:1px solid var(--border-strong);margin:18px 0;}
+.plan-feats{list-style:none;display:flex;flex-direction:column;gap:12px;margin-bottom:22px;padding:0;}
+.pf{display:flex;align-items:flex-start;gap:10px;font-size:13px;color:var(--ink2);line-height:1.6;}
+.pf i{font-size:16px;flex-shrink:0;margin-top:2px;color:var(--green);}
 .pf.off{color:var(--ink3);}
 .pf.off i{color:var(--ink3);}
 .pf.featured-feat i{color:var(--amber);}
-.feat-tag{font-size:9px;padding:1px 7px;border-radius:999px;font-weight:600;margin-left:4px;}
-.feat-tag.hot{background:#fff7ed;color:#c2410c;}
-.plan-btn{width:100%;padding:11px;border-radius:10px;font-family:'DM Sans',sans-serif;font-size:13px;font-weight:500;cursor:pointer;background:transparent;color:var(--ink);border:1.5px solid rgba(0,0,0,.15);transition:.18s;}
+.feat-tag{font-size:9px;padding:1px 7px;border-radius:999px;font-weight:600;margin-left:4px;background:#fff7ed;color:#c2410c;}
+.plan-btn{width:100%;padding:14px;border-radius:12px;font-family:'DM Sans',sans-serif;font-size:14px;font-weight:700;cursor:pointer;background:transparent;color:var(--ink);border:1.5px solid rgba(0,0,0,.16);transition:var(--transition-base);}
 .plan-btn:hover{background:rgba(0,0,0,.04);}
 .plan-btn.amber-btn{background:var(--amber);color:#fff;border-color:var(--amber);}
 .plan-btn.amber-btn:hover{background:#d08a14;}
+.plan-note{font-size:14px;color:var(--ink3);max-width:560px;margin-top:6px;}
+.plan-hero{display:flex;justify-content:space-between;flex-wrap:wrap;gap:22px;align-items:center;margin-bottom:32px;}
 </style>
 </head>
 <body>
@@ -309,132 +279,108 @@ footer p{font-size:12px;color:rgba(255,255,255,.3);}
             <p class="c-desc"><?= htmlspecialchars($r['description'] ?? '') ?></p>
             <div class="c-foot">
                 <div class="c-price">₱<?= number_format($r['price']) ?><span>/mo</span></div>
-                <a href="room_detail.php?id=<?= $r['room_id'] ?>" class="view-btn">View <i class="bx bx-right-arrow-alt"></i></a>
+                <div style="display:flex;gap:6px;">
+                    <a href="room_detail.php?id=<?= $r['room_id'] ?>" class="view-btn">View <i class="bx bx-right-arrow-alt"></i></a>
+                    <button onclick="applyForRoom(<?= $r['room_id'] ?>, '<?= addslashes(htmlspecialchars($r['room_name'])) ?>')" class="view-btn" style="background:var(--amber);border:none;cursor:pointer;">Apply</button>
+                </div>
             </div>
         </div>
     </div>
     <?php endforeach; endif; ?>
     </div>
-</div>
 
 <!-- ═══ SUBSCRIPTION PLANS SECTION ═══ -->
-<div class="section" style="margin:60px 0;">
-    <div class="sec-head">
+<div class="section" id="plans">
+    <div class="plan-hero">
         <div>
             <div class="sec-label">For Landlords</div>
-            <div class="sec-title">Choose Your Plan</div>
+            <div class="sec-title" style="margin-bottom:6px;">Simple, transparent pricing</div>
+            <p class="plan-note">List your rooms, manage tenants, and grow your boarding house business.</p>
+        </div>
+        <div class="billing-toggle" role="tablist" aria-label="Billing period">
+            <button type="button" class="tgl active" id="btn-m" onclick="setBilling('monthly')">Monthly</button>
+            <button type="button" class="tgl" id="btn-a" onclick="setBilling('annual')">Annual <span class="save-tag">Save 20%</span></button>
         </div>
     </div>
-    <div class="pricing-container">
-        <!-- LOW PLAN -->
-        <div class="pricing-card">
-            <div class="pricing-header">
-                <h3>Starter</h3>
-                <p class="pricing-desc">Perfect for new landlords</p>
-            </div>
-            <div class="pricing-price">
-                <span class="price-currency">₱</span>
-                <span class="price-amount">0</span>
-                <span class="price-period">/month</span>
-            </div>
-            <div class="pricing-features">
-                <div class="feature">
-                    <i class="bx bx-check"></i>
-                    <span>Up to 5 room listings</span>
-                </div>
-                <div class="feature">
-                    <i class="bx bx-check"></i>
-                    <span>Basic tenant management</span>
-                </div>
-                <div class="feature">
-                    <i class="bx bx-check"></i>
-                    <span>Payment tracking</span>
-                </div>
-                <div class="feature">
-                    <i class="bx bx-check"></i>
-                    <span>Email support</span>
-                </div>
-                <div class="feature disabled">
-                    <i class="bx bx-x"></i>
-                    <span>Featured listings</span>
+
+    <div class="plans-grid">
+        <div class="plan-card plan-starter">
+            <div class="plan-card-top">
+                <div class="plan-icon-wrap starter"><i class='bx bx-leaf'></i></div>
+                <div>
+                    <h3 class="plan-name">Starter</h3>
+                    <p class="plan-desc">A lean option for first-time landlords.</p>
                 </div>
             </div>
-            <button class="trial-btn">Apply for Free Trial</button>
+            <div class="plan-price-row">
+                <span class="plan-curr">₱</span>
+                <span class="plan-amt" id="p-s">0</span>
+                <span class="plan-per">/mo</span>
+            </div>
+            <div class="plan-orig" id="o-s">&nbsp;</div>
+            <hr class="plan-divider">
+            <ul class="plan-feats">
+                <li class="pf"><i class='bx bx-check'></i><span><strong>1 room listing</strong></span></li>
+                <li class="pf"><i class='bx bx-check'></i><span>Basic tenant management</span></li>
+                <li class="pf off"><i class='bx bx-minus'></i><span>Payment tracking</span></li>
+                <li class="pf off"><i class='bx bx-minus'></i><span>Email support</span></li>
+                <li class="pf off"><i class='bx bx-minus'></i><span>Featured listings</span></li>
+            </ul>
+            <button class="plan-btn" onclick="selectPlan('Starter')">Choose Starter</button>
         </div>
 
-        <!-- MEDIUM PLAN -->
-        <div class="pricing-card featured-card">
-            <div class="pricing-badge">Most Popular</div>
-            <div class="pricing-header">
-                <h3>Professional</h3>
-                <p class="pricing-desc">For active landlords</p>
-            </div>
-            <div class="pricing-price">
-                <span class="price-currency">₱</span>
-                <span class="price-amount">299</span>
-                <span class="price-period">/month</span>
-            </div>
-            <div class="pricing-features">
-                <div class="feature">
-                    <i class="bx bx-check"></i>
-                    <span>Up to 15 room listings</span>
-                </div>
-                <div class="feature">
-                    <i class="bx bx-check"></i>
-                    <span>Advanced tenant management</span>
-                </div>
-                <div class="feature">
-                    <i class="bx bx-check"></i>
-                    <span>Transaction records & reports</span>
-                </div>
-                <div class="feature">
-                    <i class="bx bx-check"></i>
-                    <span>Priority email & chat support</span>
-                </div>
-                <div class="feature">
-                    <i class="bx bx-check"></i>
-                    <span>3 featured listings per month</span>
+        <div class="plan-card featured-plan">
+            <div class="plan-card-top">
+                <div class="plan-icon-wrap pro"><i class='bx bx-store'></i></div>
+                <div>
+                    <h3 class="plan-name">Professional</h3>
+                    <p class="plan-desc">For growing portfolios and daily operations.</p>
                 </div>
             </div>
-            <button class="trial-btn featured">Apply for Free Trial</button>
+            <div class="plan-price-row">
+                <span class="plan-curr">₱</span>
+                <span class="plan-amt" id="p-p">399</span>
+                <span class="plan-per">/mo</span>
+            </div>
+            <div class="plan-orig" id="o-p">&nbsp;</div>
+            <hr class="plan-divider">
+            <ul class="plan-feats">
+                <li class="pf"><i class='bx bx-check'></i><span>Up to <strong>10 room listings</strong></span></li>
+                <li class="pf"><i class='bx bx-check'></i><span>Advanced tenant management</span></li>
+                <li class="pf"><i class='bx bx-check'></i><span>Transaction records & reports</span></li>
+                <li class="pf"><i class='bx bx-check'></i><span>Priority email & chat support</span></li>
+                <li class="pf featured-feat"><i class='bx bx-star'></i><span><strong>3 featured listings</strong>/month <span class="feat-tag hot">Hot</span></span></li>
+            </ul>
+            <button class="plan-btn amber-btn" onclick="selectPlan('Professional')">Choose Professional</button>
         </div>
 
-        <!-- PRO PLAN -->
-        <div class="pricing-card">
-            <div class="pricing-header">
-                <h3>Enterprise</h3>
-                <p class="pricing-desc">For premium landlords</p>
-            </div>
-            <div class="pricing-price">
-                <span class="price-currency">₱</span>
-                <span class="price-amount">699</span>
-                <span class="price-period">/month</span>
-            </div>
-            <div class="pricing-features">
-                <div class="feature">
-                    <i class="bx bx-check"></i>
-                    <span>Unlimited room listings</span>
-                </div>
-                <div class="feature">
-                    <i class="bx bx-check"></i>
-                    <span>Full tenant management suite</span>
-                </div>
-                <div class="feature">
-                    <i class="bx bx-check"></i>
-                    <span>Advanced analytics & reports</span>
-                </div>
-                <div class="feature">
-                    <i class="bx bx-check"></i>
-                    <span>24/7 phone & priority support</span>
-                </div>
-                <div class="feature">
-                    <i class="bx bx-check"></i>
-                    <span>All listings featured (always)</span>
+        <div class="plan-card">
+            <div class="plan-card-top">
+                <div class="plan-icon-wrap ent"><i class='bx bxs-crown'></i></div>
+                <div>
+                    <h3 class="plan-name">Enterprise</h3>
+                    <p class="plan-desc">For premium landlords with large portfolios.</p>
                 </div>
             </div>
-            <button class="trial-btn">Apply for Free Trial</button>
+            <div class="plan-price-row">
+                <span class="plan-curr">₱</span>
+                <span class="plan-amt" id="p-e">699</span>
+                <span class="plan-per">/mo</span>
+            </div>
+            <div class="plan-orig" id="o-e">&nbsp;</div>
+            <hr class="plan-divider">
+            <ul class="plan-feats">
+                <li class="pf"><i class='bx bx-check'></i><span><strong>Unlimited</strong> room listings</span></li>
+                <li class="pf"><i class='bx bx-check'></i><span>Full tenant management suite</span></li>
+                <li class="pf"><i class='bx bx-check'></i><span>Advanced analytics & reports</span></li>
+                <li class="pf"><i class='bx bx-check'></i><span>24/7 phone & priority support</span></li>
+                <li class="pf featured-feat"><i class='bx bx-star'></i><span><strong>All listings always featured</strong></span></li>
+                <li class="pf"><i class='bx bx-check'></i><span>Custom branding on listings</span></li>
+            </ul>
+            <button class="plan-btn" onclick="selectPlan('Enterprise')">Choose Enterprise</button>
         </div>
     </div>
+    <p style="text-align:center;font-size:12px;color:var(--ink3);margin-top:20px;">All plans include a 14-day free trial. No credit card required.</p>
 </div>
 
 <div class="why">
@@ -447,93 +393,6 @@ footer p{font-size:12px;color:rgba(255,255,255,.3);}
             <div class="why-card"><div class="why-icon"><i class="bx bx-bolt-circle"></i></div><h3>Real-time Availability</h3><p>Status updates instantly on changes.</p></div>
         </div>
     </div>
-</div>
-
-<!-- ═══ SUBSCRIPTION PLANS SECTION ═══ -->
-<div class="section" id="plans">
-    <div class="sec-label">For Landlords</div>
-    <div class="sec-title" style="margin-bottom:6px;">Simple, transparent pricing</div>
-    <p style="font-size:14px;color:var(--ink3);margin-bottom:28px;">List your rooms, manage tenants, and grow your boarding house business.</p>
-
-    <!-- Billing toggle -->
-    <div class="billing-toggle">
-        <button class="tgl active" id="btn-m" onclick="setBilling('monthly')">Monthly</button>
-        <button class="tgl" id="btn-a" onclick="setBilling('annual')">Annual <span class="save-tag">Save 20%</span></button>
-    </div>
-
-    <div class="plans-grid">
-
-        <!-- STARTER -->
-        <div class="plan-card">
-            <div class="plan-icon-wrap starter"><i class='bx bx-leaf'></i></div>
-            <h3 class="plan-name">Starter</h3>
-            <p class="plan-desc">Best for new landlords getting started.</p>
-            <div class="plan-price-row">
-                <span class="plan-curr">₱</span>
-                <span class="plan-amt" id="p-s">0</span>
-                <span class="plan-per">/mo</span>
-            </div>
-            <div class="plan-orig" id="o-s">&nbsp;</div>
-            <hr class="plan-divider">
-            <ul class="plan-feats">
-                <li class="pf"><i class='bx bx-check'></i><span><strong>1 room listings</strong></span></li>
-                <li class="pf"><i class='bx bx-check'></i><span>Basic tenant management</span></li>
-                <li class="pf"><i class='bx bx-check'></i><span>Payment tracking</span></li>
-                <li class="pf"><i class='bx bx-check'></i><span>Email support</span></li>
-                <li class="pf off"><i class='bx bx-minus'></i><span>Featured listings</span></li>
-                <li class="pf off"><i class='bx bx-minus'></i><span>Analytics &amp; reports</span></li>
-            </ul>
-            <button class="plan-btn" onclick="applyTrial('Starter')">Apply for free trial</button>
-        </div>
-
-        <!-- PROFESSIONAL -->
-        <div class="plan-card featured-plan">
-            <div class="pop-badge">Most popular</div>
-            <div class="plan-icon-wrap pro"><i class='bx bx-store'></i></div>
-            <h3 class="plan-name">Professional</h3>
-            <p class="plan-desc">For active landlords managing multiple rooms.</p>
-            <div class="plan-price-row">
-                <span class="plan-curr">₱</span>
-                <span class="plan-amt" id="p-p">299</span>
-                <span class="plan-per">/mo</span>
-            </div>
-            <div class="plan-orig" id="o-p">&nbsp;</div>
-            <hr class="plan-divider">
-            <ul class="plan-feats">
-                <li class="pf"><i class='bx bx-check'></i><span>Up to <strong>10 room listings</strong></span></li>
-                <li class="pf"><i class='bx bx-check'></i><span>Advanced tenant management</span></li>
-                <li class="pf"><i class='bx bx-check'></i><span>Transaction records &amp; reports</span></li>
-                <li class="pf"><i class='bx bx-check'></i><span>Priority email &amp; chat support</span></li>
-                <li class="pf featured-feat"><i class='bx bx-star'></i><span><strong>3 featured listings</strong>/month <span class="feat-tag hot">Hot</span></span></li>
-            </ul>
-            <button class="plan-btn amber-btn" onclick="applyTrial('Professional')">Start free trial</button>
-        </div>
-
-        <!-- ENTERPRISE -->
-        <div class="plan-card">
-            <div class="plan-icon-wrap ent"><i class='bx bxs-crown'></i></div>
-            <h3 class="plan-name">Enterprise</h3>
-            <p class="plan-desc">For premium landlords with large portfolios.</p>
-            <div class="plan-price-row">
-                <span class="plan-curr">₱</span>
-                <span class="plan-amt" id="p-e">699</span>
-                <span class="plan-per">/mo</span>
-            </div>
-            <div class="plan-orig" id="o-e">&nbsp;</div>
-            <hr class="plan-divider">
-            <ul class="plan-feats">
-                <li class="pf"><i class='bx bx-check'></i><span><strong>Unlimited</strong> room listings</span></li>
-                <li class="pf"><i class='bx bx-check'></i><span>Full tenant management suite</span></li>
-                <li class="pf"><i class='bx bx-check'></i><span>Advanced analytics &amp; reports</span></li>
-                <li class="pf"><i class='bx bx-check'></i><span>24/7 phone &amp; priority support</span></li>
-                <li class="pf featured-feat"><i class='bx bx-star'></i><span><strong>All listings always featured</strong></span></li>
-                <li class="pf"><i class='bx bx-check'></i><span>Custom branding on listings</span></li>
-            </ul>
-            <button class="plan-btn" onclick="applyTrial('Enterprise')">Apply for free trial</button>
-        </div>
-
-    </div>
-    <p style="text-align:center;font-size:12px;color:var(--ink3);margin-top:20px;">All plans include a 14-day free trial. No credit card required.</p>
 </div>
 
 <footer>
@@ -569,30 +428,54 @@ si.addEventListener('focus',()=>{if(si.value.trim()&&sr.innerHTML)sr.classList.a
 document.addEventListener('keydown',e=>{if(e.key==='Escape')sr.classList.remove('show');});
 function e(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
 
-// Trial Button Handlers
-document.querySelectorAll('.trial-btn').forEach(btn=>{
-    btn.addEventListener('click',function(){
-        const plan=this.closest('.pricing-card').querySelector('.pricing-header h3').textContent;
-        alert(`✨ Thank you for your interest in our ${plan} plan!\n\nYou can start your free trial by logging in or registering as a landlord.`);
-        window.location.href='registration.php';
-    });
-});
+function selectPlan(plan){
+  window.location.href = 'registration.php?role=landlord&plan=' + encodeURIComponent(plan);
+}
 
-const mPrices={s:0,p:1000,e:2000};
+function applyForRoom(roomId, roomName){
+  // Check if user is logged in
+  if(!<?= isset($_SESSION['user_id']) ? 'true' : 'false' ?>){
+    if(confirm('You need to log in to apply for a room.\n\nWould you like to log in or register?')){
+      window.location.href = 'login.php';
+    }
+    return;
+  }
+  
+  if(<?= isset($_SESSION['user_id']) && $_SESSION['role'] === 'tenant' ? 'false' : 'true' ?>){
+    alert('Only tenants can apply for rooms.');
+    return;
+  }
+
+  if(confirm('Apply for ' + roomName + '?')){
+    fetch('', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+      body: 'apply_for_room=1&room_id=' + roomId
+    })
+    .then(r => r.json())
+    .then(data => {
+      if(data.status === 'success'){
+        alert('Application submitted successfully! You will be notified once the landlord reviews your application.');
+        window.location.href = 'tenant_dashboard.php';
+      } else {
+        alert('Error: ' + data.message);
+      }
+    })
+    .catch(err => alert('An error occurred. Please try again.'));
+  }
+}
+
+const mPrices={s:0,p:299,e:699};
 const aPrices={s:0,p:239,e:559};
 function setBilling(mode){
   document.getElementById('btn-m').classList.toggle('active',mode==='monthly');
   document.getElementById('btn-a').classList.toggle('active',mode==='annual');
-  const d=mode==='annual'?aPrices:mPrices;
-  document.getElementById('p-s').textContent=d.s===0?'0':d.s.toLocaleString();
-  document.getElementById('p-p').textContent=d.p.toLocaleString();
-  document.getElementById('p-e').textContent=d.e.toLocaleString();
-  document.getElementById('o-p').innerHTML=mode==='annual'?'₱'+mPrices.p.toLocaleString()+'/mo billed monthly':'&nbsp;';
-  document.getElementById('o-e').innerHTML=mode==='annual'?'₱'+mPrices.e.toLocaleString()+'/mo billed monthly':'&nbsp;';
-}
-function applyTrial(plan){
-  alert('✨ Thanks for your interest in the '+plan+' plan!\n\nRegister or log in to start your 14-day free trial.');
-  window.location.href='registration.php';
+  const d = mode==='annual'?aPrices:mPrices;
+  document.getElementById('p-s').textContent = d.s===0 ? '0' : d.s.toLocaleString();
+  document.getElementById('p-p').textContent = d.p.toLocaleString();
+  document.getElementById('p-e').textContent = d.e.toLocaleString();
+  document.getElementById('o-p').innerHTML = mode==='annual' ? '₱' + mPrices.p.toLocaleString() + '/mo billed monthly' : '&nbsp;';
+  document.getElementById('o-e').innerHTML = mode==='annual' ? '₱' + mPrices.e.toLocaleString() + '/mo billed monthly' : '&nbsp;';
 }
 </script>
 </body>
