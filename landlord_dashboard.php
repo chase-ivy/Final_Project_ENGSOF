@@ -151,6 +151,7 @@ footer p{font-size:12px;color:rgba(255,255,255,.3);}
     <span>RS<em>Y</em>NC</span>
     <div class="nav-actions">
         <a href="maintenance.php">Maintenance</a>
+        <a href="register_documents.php">Submit Documents</a>
         <a href="logout.php">Logout</a>
     </div>
 </nav>

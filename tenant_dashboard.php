@@ -3,7 +3,6 @@ session_start();
 require_once "config.php";
 require_once "oop.php";
 
-// Check if user is logged in and is a tenant
 if (!isset($_SESSION['user_id']) || $_SESSION['role'] !== 'tenant') {
     header("Location: login.php");
     exit();
@@ -12,10 +11,27 @@ if (!isset($_SESSION['user_id']) || $_SESSION['role'] !== 'tenant') {
 $oop = new oopPHP();
 $user_id = $_SESSION['user_id'];
 
-// Get tenant's applications
+/* =========================
+   VERIFICATION STATUS
+========================= */
+$stmt = $connect->prepare("
+    SELECT email, email_verified, phone_verified 
+    FROM users WHERE user_id = ?
+");
+$stmt->execute([$user_id]);
+$user = $stmt->fetch(PDO::FETCH_ASSOC);
+
+$emailVerified = $user['email_verified'] ?? 0;
+$phoneVerified = $user['phone_verified'] ?? 0;
+
+/* =========================
+   APPLICATIONS
+========================= */
 $applications = $oop->get_tenant_applications($user_id);
 
-// Get tenant's active bookings
+/* =========================
+   BOOKINGS
+========================= */
 $stmt = $connect->prepare("
     SELECT t.tenant_id, t.room_id, t.start_date, t.end_date, t.status,
            r.room_name, r.price, r.description, r.max_occupants,
@@ -26,182 +42,314 @@ $stmt = $connect->prepare("
     LEFT JOIN tenants t2 ON t2.room_id = r.room_id AND t2.status = 'Active'
     WHERE t.user_id = :uid AND t.status = 'Active'
     GROUP BY t.tenant_id
-    ORDER BY t.start_date ASC
 ");
 $stmt->execute([":uid" => $user_id]);
 $bookings = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
+/* =========================
+   MESSAGE
+========================= */
 $msg = $_SESSION['msg'] ?? null;
 unset($_SESSION['msg']);
 $isErr = $msg && str_starts_with($msg, 'err:');
 if ($isErr) $msg = substr($msg, 4);
 ?>
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Tenant Dashboard · RSYNC</title>
+
 <link href="https://fonts.googleapis.com/css2?family=Syne:wght@700;800&family=DM+Sans:wght@400;500&display=swap" rel="stylesheet">
 <link href="https://unpkg.com/boxicons@latest/css/boxicons.min.css" rel="stylesheet">
+
 <style>
-:root{--ink:#0a0a0f;--ink2:#3d3d4a;--ink3:#8e8ea0;--bg:#f4f3ef;--amber:#e8a020;--green:#059669;--red:#dc2626;--border:rgba(0,0,0,.08);--r:14px;--sh:0 2px 12px rgba(0,0,0,.06);}
-*,*::before,*::after{margin:0;padding:0;box-sizing:border-box;}
-body{display:flex;flex-direction:column;min-height:100vh;font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--ink);font-size:14px;}
+:root{
+--ink:#0a0a0f;--ink3:#8e8ea0;--bg:#f4f3ef;
+--amber:#e8a020;--green:#059669;--red:#dc2626;
+--border:rgba(0,0,0,.08);--r:14px;--sh:0 2px 12px rgba(0,0,0,.06);
+}
+
+*{margin:0;padding:0;box-sizing:border-box;}
+
+body{
+font-family:'DM Sans',sans-serif;
+background:var(--bg);
+color:var(--ink);
+min-height:100vh;
+display:flex;
+flex-direction:column;
+}
+
 a{text-decoration:none;}
 
-nav{background:var(--ink);display:flex;align-items:center;justify-content:space-between;padding:0 32px;height:56px;}
-nav span{font-family:'Syne',sans-serif;font-size:18px;font-weight:800;color:#fff;letter-spacing:3px;}
+nav{
+background:var(--ink);
+display:flex;
+justify-content:space-between;
+align-items:center;
+padding:0 32px;
+height:56px;
+}
+
+nav span{
+font-family:'Syne';
+color:#fff;
+font-weight:800;
+letter-spacing:3px;
+}
+
 nav span em{color:var(--amber);font-style:normal;}
-nav .nav-actions{display:flex;align-items:center;gap:10px;}
-nav a{font-size:13px;color:rgba(255,255,255,.65);border:1px solid rgba(255,255,255,.2);padding:6px 14px;border-radius:8px;transition:.18s;}
-nav a:hover{color:#fff;border-color:rgba(255,255,255,.5);}
 
-.wrap{flex:1;width:92%;max-width:1320px;margin:26px auto;}
-.top-bar{display:flex;align-items:center;justify-content:space-between;margin-bottom:18px;}
-.top-bar h1{font-family:'Syne',sans-serif;font-size:20px;font-weight:800;}
+nav a{
+color:rgba(255,255,255,.65);
+padding:6px 14px;
+border:1px solid rgba(255,255,255,.2);
+border-radius:8px;
+font-size:13px;
+}
 
-.toast{padding:10px 16px;border-radius:9px;margin-bottom:16px;font-size:13px;font-weight:500;display:flex;align-items:center;gap:7px;background:#fefce8;color:#92400e;border:1px solid #fde68a;}
-.toast.err{background:#fef2f2;color:var(--red);border-color:#fecaca;}
+nav a:hover{color:#fff;}
 
-.section-title{font-family:'Syne',sans-serif;font-size:16px;font-weight:800;margin-bottom:14px;margin-top:24px;}
+.wrap{width:92%;max-width:1200px;margin:25px auto;flex:1;}
 
-.tbl-wrap{background:#fff;border-radius:var(--r);box-shadow:var(--sh);overflow:auto;border:1px solid var(--border);margin-bottom:24px;}
-table{width:100%;border-collapse:collapse;min-width:960px;}
-thead th{background:var(--ink);color:#fff;padding:11px 14px;font-size:12px;font-weight:600;text-align:left;white-space:nowrap;letter-spacing:.3px;}
-tbody td{padding:11px 14px;border-bottom:1px solid var(--border);vertical-align:middle;}
-tbody tr:last-child td{border-bottom:none;}
-tbody tr:hover{background:#fafaf8;}
+.section-title{
+font-family:'Syne';
+font-size:16px;
+font-weight:800;
+margin:20px 0 12px;
+}
 
-.room-card{background:#fff;border:1px solid var(--border);border-radius:var(--r);overflow:hidden;box-shadow:var(--sh);margin-bottom:14px;display:flex;}
-.room-card-img{width:140px;height:120px;object-fit:cover;background:#e8e7e3;}
-.room-card-body{flex:1;padding:14px 16px;display:flex;flex-direction:column;justify-content:space-between;}
-.room-card-head{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px;}
-.room-card-name{font-family:'Syne',sans-serif;font-size:15px;font-weight:800;}
-.room-card-status{font-size:11px;font-weight:600;padding:3px 9px;border-radius:999px;display:inline-block;}
-.room-card-status.pending{background:rgba(251,191,36,.2);color:#b45309;}
-.room-card-status.verified{background:rgba(5,150,105,.15);color:var(--green);}
-.room-card-status.rejected{background:rgba(220,38,38,.1);color:var(--red);}
-.room-card-info{font-size:12px;color:var(--ink3);line-height:1.5;margin-bottom:10px;}
-.room-card-price{font-family:'Syne',sans-serif;font-size:16px;font-weight:800;color:var(--ink);}
-.room-card-price span{font-size:11px;font-weight:400;color:var(--ink3);}
+.toast{
+background:#fefce8;
+border:1px solid #fde68a;
+color:#92400e;
+padding:10px 14px;
+border-radius:9px;
+margin-bottom:15px;
+font-size:13px;
+}
 
-.badge{display:inline-block;padding:3px 9px;border-radius:999px;font-size:11px;font-weight:600;}
-.badge-av{background:rgba(209,250,229,.9);color:#065f46;}
-.badge-oc{background:rgba(254,226,226,.9);color:#991b1b;}
+.toast.err{
+background:#fef2f2;
+border-color:#fecaca;
+color:var(--red);
+}
 
-.empty-state{text-align:center;padding:40px 20px;color:var(--ink3);}
-.empty-state i{font-size:48px;opacity:.3;margin-bottom:12px;}
+/* TABLE */
+.tbl-wrap{
+background:#fff;
+border-radius:var(--r);
+box-shadow:var(--sh);
+border:1px solid var(--border);
+overflow:auto;
+margin-bottom:20px;
+}
 
-.btn{display:inline-flex;align-items:center;gap:5px;padding:7px 14px;border:none;border-radius:9px;font-family:'DM Sans',sans-serif;font-size:13px;font-weight:500;cursor:pointer;transition:.15s;}
-.btn-dark{background:var(--ink);color:#fff;}.btn-dark:hover{background:#1e1e2e;}
-.btn-ghost{background:transparent;border:1px solid var(--border);color:var(--ink);}.btn-ghost:hover{background:rgba(0,0,0,.04);}
-.btn-green{background:rgba(5,150,105,.1);color:var(--green);border:1px solid rgba(5,150,105,.25);}
-.btn-red{background:rgba(220,38,38,.08);color:var(--red);border:1px solid rgba(220,38,38,.2);}
-.btn-sm{padding:5px 10px;font-size:12px;}
+table{width:100%;border-collapse:collapse;min-width:800px;}
 
-footer{background:var(--ink);border-top:1px solid rgba(255,255,255,.06);padding:22px 32px;display:flex;justify-content:space-between;align-items:center;margin-top:auto;}
-.foot-logo{font-family:'Syne',sans-serif;font-size:15px;font-weight:800;color:#fff;letter-spacing:2px;}
-.foot-logo em{color:var(--amber);font-style:normal;}
-footer p{font-size:12px;color:rgba(255,255,255,.3);}
+thead th{
+background:var(--ink);
+color:#fff;
+font-size:12px;
+padding:10px;
+text-align:left;
+}
 
-@media(max-width:640px){nav{padding:0 16px;}.wrap{width:96%;}.room-card{flex-direction:column;}.room-card-img{width:100%;height:150px;}footer{flex-direction:column;gap:6px;padding:18px;}}
+tbody td{
+padding:10px;
+border-bottom:1px solid var(--border);
+}
+
+/* CARDS */
+.room-card{
+background:#fff;
+border-radius:var(--r);
+box-shadow:var(--sh);
+border:1px solid var(--border);
+padding:14px;
+margin-bottom:12px;
+}
+
+/* VERIFICATION */
+.verify-box{
+background:#fff;
+border-radius:var(--r);
+box-shadow:var(--sh);
+padding:14px;
+border:1px solid var(--border);
+margin-bottom:18px;
+}
+
+.badge{
+padding:3px 8px;
+border-radius:999px;
+font-size:11px;
+font-weight:600;
+}
+
+.ok{background:rgba(5,150,105,.15);color:var(--green);}
+.no{background:rgba(220,38,38,.1);color:var(--red);}
+
+/* BUTTON */
+.btn{
+padding:7px 12px;
+border:none;
+border-radius:8px;
+cursor:pointer;
+font-size:12px;
+}
+
+.btn-dark{background:var(--ink);color:#fff;}
+.btn-ghost{background:transparent;border:1px solid var(--border);}
+
+/* MODAL */
+.modal{
+display:none;
+position:fixed;
+inset:0;
+background:rgba(0,0,0,.4);
+justify-content:center;
+align-items:center;
+}
+
+.modal.show{display:flex;}
+
+.modal-box{
+background:#fff;
+padding:20px;
+border-radius:12px;
+width:320px;
+}
+
+footer{
+background:var(--ink);
+color:#fff;
+padding:18px;
+text-align:center;
+margin-top:auto;
+}
 </style>
 </head>
+
 <body>
 
 <nav>
     <span>RS<em>Y</em>NC</span>
-    <div class="nav-actions">
+    <div>
         <a href="rooms.php">Browse Rooms</a>
         <a href="logout.php">Logout</a>
     </div>
 </nav>
 
 <div class="wrap">
-    <div class="top-bar">
-        <h1>Your Dashboard</h1>
-    </div>
 
-    <?php if ($msg): ?><div class="toast <?= $isErr?'err':'' ?>"><?= htmlspecialchars($msg) ?></div><?php endif; ?>
+<?php if ($msg): ?>
+<div class="toast <?= $isErr?'err':'' ?>">
+    <?= htmlspecialchars($msg) ?>
+</div>
+<?php endif; ?>
 
-    <!-- ACTIVE BOOKINGS SECTION -->
-    <div class="section-title">📍 Your Applied Rooms</div>
-    <?php if (empty($bookings)): ?>
-        <div class="empty-state">
-            <i class="bx bx-home"></i>
-            <p><a href="rooms.php" style="color:var(--amber)">Browse rooms</a> to find your next home.</p>
-        </div>
-    <?php else: ?>
-        <div class="tbl-wrap">
-        <table>
-            <thead><tr><th>Room</th><th>Price</th><th>Duration</th><th>Occupancy</th><th>Status</th></tr></thead>
-            <tbody>
-            <?php foreach ($bookings as $b):
-                $start = strtotime($b['start_date']);
-                $end = strtotime($b['end_date']);
-                $days = round(($end - $start) / 86400);
-                $cur = (int)$b['current_occupants'];
-                $max = (int)$b['max_occupants'];
-            ?>
-            <tr>
-                <td><strong><?= htmlspecialchars($b['room_name']) ?></strong></td>
-                <td>₱<?= number_format($b['price']) ?></td>
-                <td><?= date('M d, Y', $start) ?> - <?= date('M d, Y', $end) ?><br><span style="font-size:11px;color:var(--ink3);"><?= $days ?> days</span></td>
-                <td><?= $cur ?>/<?= $max ?> occupants</td>
-                <td><span class="badge badge-av">Active</span></td>
-            </tr>
-            <?php endforeach; ?>
-            </tbody>
-        </table>
-        </div>
-    <?php endif; ?>
+<!-- ================= VERIFICATION ================= -->
+<div class="verify-box">
+    <div class="section-title">Identity Verification</div>
 
-    <!-- APPLICATIONS SECTION -->
-    <div class="section-title">📝 Your Applications</div>
-    <?php if (empty($applications)): ?>
-        <div class="empty-state">
-            <i class="bx bx-file"></i>
-            <p>No applications yet. <a href="rooms.php" style="color:var(--amber)">Apply for a room</a> to get started.</p>
-        </div>
-    <?php else: ?>
-        <?php foreach ($applications as $app):
-            $cover = !empty($app['cover_image']) ? 'images/'.htmlspecialchars($app['cover_image']) : null;
-            $statusClass = strtolower($app['status']);
-        ?>
-        <div class="room-card">
-            <?php if ($cover): ?>
-                <img src="<?= $cover ?>" alt="<?= htmlspecialchars($app['room_name']) ?>" class="room-card-img" onerror="this.style.display='none'">
-            <?php endif; ?>
-            <div class="room-card-body">
-                <div class="room-card-head">
-                    <div>
-                        <div class="room-card-name"><?= htmlspecialchars($app['room_name']) ?></div>
-                        <div class="room-card-status <?= $statusClass ?>"><?= $app['status'] ?></div>
-                    </div>
-                    <div class="room-card-price">₱<?= number_format($app['price']) ?><span>/month</span></div>
-                </div>
-                <div class="room-card-info">
-                    <?= htmlspecialchars($app['description']) ?><br>
-                    <strong>Applied:</strong> <?= date('M d, Y \a\t h:i A', strtotime($app['applied_at'])) ?>
-                </div>
-                <?php if ($app['status'] === 'Pending'): ?>
-                    <div style="font-size:11px;color:var(--ink3);">⏳ Waiting for landlord approval</div>
-                <?php elseif ($app['status'] === 'Verified'): ?>
-                    <div style="font-size:11px;color:var(--green);">✓ Your application was verified! Proceed to booking.</div>
-                <?php elseif ($app['status'] === 'Rejected'): ?>
-                    <div style="font-size:11px;color:var(--red);">✕ Your application was rejected. Try another room.</div>
-                <?php endif; ?>
-            </div>
-        </div>
-        <?php endforeach; ?>
-    <?php endif; ?>
+    <p>Email:
+        <span class="badge <?= $emailVerified ? 'ok' : 'no' ?>">
+            <?= $emailVerified ? 'Verified' : 'Not Verified' ?>
+        </span>
+        <?php if(!$emailVerified): ?>
+            <button class="btn btn-dark" onclick="openOTP('email')">Verify</button>
+        <?php endif; ?>
+    </p>
+
+    <br>
+
+    <p>Phone:
+        <span class="badge <?= $phoneVerified ? 'ok' : 'no' ?>">
+            <?= $phoneVerified ? 'Verified' : 'Not Verified' ?>
+        </span>
+        <?php if(!$phoneVerified): ?>
+            <button class="btn btn-dark" onclick="openOTP('phone')">Verify</button>
+        <?php endif; ?>
+    </p>
+</div>
+
+<!-- ================= BOOKINGS ================= -->
+<div class="section-title">Active Bookings</div>
+
+<div class="tbl-wrap">
+<table>
+<thead>
+<tr><th>Room</th><th>Price</th><th>Status</th></tr>
+</thead>
+<tbody>
+<?php foreach ($bookings as $b): ?>
+<tr>
+<td><?= htmlspecialchars($b['room_name']) ?></td>
+<td>₱<?= number_format($b['price']) ?></td>
+<td>Active</td>
+</tr>
+<?php endforeach; ?>
+</tbody>
+</table>
+</div>
+
+<!-- ================= APPLICATIONS ================= -->
+<div class="section-title">Applications</div>
+
+<?php foreach ($applications as $app): ?>
+<div class="room-card">
+    <strong><?= htmlspecialchars($app['room_name']) ?></strong><br>
+    Status: <?= $app['status'] ?>
+</div>
+<?php endforeach; ?>
+
+</div>
+
+<!-- ================= OTP MODAL ================= -->
+<div class="modal" id="otpModal">
+<div class="modal-box">
+    <h3>Enter OTP</h3>
+    <input type="text" id="otp" placeholder="6-digit code" style="width:100%;padding:8px;margin:10px 0;">
+    <button class="btn btn-dark" onclick="verifyOTP()">Verify</button>
+    <button class="btn btn-ghost" onclick="closeModal()">Cancel</button>
+</div>
 </div>
 
 <footer>
-    <div class="foot-logo">RS<em>Y</em>NC</div>
-    <p>© 2026 RSYNC. All rights reserved.</p>
+RSYNC © 2026
 </footer>
+
+<script>
+let type = "";
+
+function openOTP(t){
+    type = t;
+    document.getElementById('otpModal').classList.add('show');
+}
+
+function closeModal(){
+    document.getElementById('otpModal').classList.remove('show');
+}
+
+function verifyOTP(){
+    let code = document.getElementById('otp').value;
+
+    fetch("",{
+        method:"POST",
+        headers:{"Content-Type":"application/x-www-form-urlencoded"},
+        body:"verify_otp=1&type="+type+"&code="+code
+    })
+    .then(r=>r.json())
+    .then(res=>{
+        alert(res.message || "Done");
+        location.reload();
+    });
+}
+</script>
 
 </body>
 </html>
